@@ -35,15 +35,14 @@ on:
         type: string
         default: ''
       ksu_type:
-        description: 'Select KSU Type'
+        description: 'Root solution (ZSU-only build)'
         required: true
         type: choice
         options:
-          - BakaSU
-          - KSU
-        default: BakaSU
+          - ZSU
+        default: ZSU
       ksu_branch_or_hash:
-        description: 'KSU branch or commit hash'
+        description: 'ZSU branch or commit hash'
         type: string
         default: 'main'
       optimize_level:
@@ -222,13 +221,12 @@ jobs:
           ksu_type="${{ inputs.ksu_type }}"
           ksu_ref="${{ inputs.ksu_branch_or_hash }}"
           
-          if [ "$ksu_type" == "BakaSU" ]; then
-            KSU_REPO_OWNER="Baka-SU"
-            KSU_REPO_NAME="BakaSU"
-          else
-            KSU_REPO_OWNER="tiann"
-            KSU_REPO_NAME="KernelSU"
+          if [ "$ksu_type" != "ZSU" ]; then
+            echo "::error::This workflow builds ZSU only."
+            exit 1
           fi
+          KSU_REPO_OWNER="Only7rb-coder"
+          KSU_REPO_NAME="zsu"
           
           HEAD_REF="refs/heads/${ksu_ref}"
           TAG_REF="refs/tags/${ksu_ref}"
@@ -463,7 +461,7 @@ jobs:
           ksu_ref="${{ inputs.ksu_branch_or_hash }}"
           
           ksu_display=""
-          if [ "$ksu_type" = "BakaSU" ] || [ "$ksu_type" = "KSU" ]; then
+          if [ "$ksu_type" = "ZSU" ]; then
             if [[ "$ksu_ref" =~ ^[0-9a-f]{40}$ ]]; then
               ksu_display+="📌 \`$ksu_type\`, \`$ksu_ref\`"
             else
@@ -839,7 +837,7 @@ jobs:
             if [ "${{ matrix.ksu_type }}" = "BakaSU" ]; then
               echo "  - BakaSU: v${{ steps.build.outputs.ksu_version }}"
             else
-              echo "  - KSU: v${{ steps.build.outputs.ksu_version }}"
+              echo "  - ZSU: v${{ steps.build.outputs.ksu_version }}"
             fi
             
             echo "ksu_ver=${{ steps.build.outputs.ksu_version }}" >> "$GITHUB_OUTPUT"
@@ -893,7 +891,7 @@ jobs:
           EOF
             else
               cat >> $GITHUB_STEP_SUMMARY << EOF
-          | **KSU** | v${{ steps.build.outputs.ksu_version }} |
+          | **ZSU** | v${{ steps.build.outputs.ksu_version }} |
           EOF
             fi
             
@@ -1181,10 +1179,10 @@ jobs:
           | **BakaSU Branch/Hash** | \`$KSU_BRANCH\` |
           | **BakaSU Version** | \`$ksu_ver_global\` |
           EOF
-          elif [ "$ksu_type" == "KSU" ]; then
+          elif [ "$ksu_type" == "ZSU" ]; then
             cat << EOF >> release_notes.md
-          | **KernelSU Branch** | \`$ksu_display\` |
-          | **KernelSU Version** | \`$ksu_ver_global\` |
+          | **ZSU Branch** | \`$ksu_display\` |
+          | **ZSU Version** | \`$ksu_ver_global\` |
           EOF
           fi
           
@@ -1212,9 +1210,9 @@ jobs:
             cat << EOF >> release_notes.md
           - **BakaSU** - Kernel-based Android Root Solution,forked from sukisu
           EOF
-          elif [ "$ksu_type" == "KSU" ]; then
+          elif [ "$ksu_type" == "ZSU" ]; then
             cat << EOF >> release_notes.md
-          - **KernelSU** - Kernel-level root solution
+          - **ZSU** - Only7rb-coder's ZSU manager and matching kernel-side root integration
           EOF
           fi
           cat << EOF >> release_notes.md
@@ -1268,13 +1266,10 @@ jobs:
           - **BakaSU Manager**  
             → [Offical Documentation](https://bakasu.org)
           EOF
-          elif [ "$ksu_type" == "KSU" ]; then
+          elif [ "$ksu_type" == "ZSU" ]; then
             cat << EOF >> release_notes.md
-          - **KernelSU Manager**  
-            → [GitHub Release](https://github.com/tiann/KernelSU/releases)
-          ### Required Module
-          - **KSU SUSFS Module** (Required for SUSFS features)  
-            → [GitHub Release](https://github.com/sidex15/ksu_module_susfs/releases)
+          - **ZSU Manager**
+            → [ZSU releases](https://github.com/Only7rb-coder/zsu/releases)
           EOF
           fi
           cat << EOF >> release_notes.md
@@ -1289,7 +1284,7 @@ jobs:
           ### Prerequisites
           - Unlocked bootloader.
           - Backup your current boot image.
-          - Have root access using Magisk / KernelSU / Apatch (Any forks).
+          - Install the matching ZSU manager APK for this ZSU kernel build.
           
           ### Via Kernel Flasher
           1. Download the appropriate ZIP for your device.
@@ -1302,7 +1297,7 @@ jobs:
           ## 📜 Changelog
           
           ### This Release
-          - Migrated to Action input menu for KSU/BakaSU choice.
+          - Locked the build workflow to ZSU only (no BakaSU or stock KernelSU build option).
           - Updated SUSFS to $SUSFS_BASE_VERSION.
           - Added HMBIRD support for all SM8750/MT6991 devices.
           - Improved ccache build system.
@@ -1323,7 +1318,7 @@ jobs:
           
           ## 🙏 Credits
           
-          - **BakaSU Team** - Root solution
+          - **ZSU** - KernelSU-Next-based root manager and kernel integration ([source](https://github.com/Only7rb-coder/zsu))
           - **simonpunk** - SUSFS development
           - **OnePlus** - Kernel source code
           - **Community Contributors** - Testing and feedback
@@ -1405,13 +1400,13 @@ jobs:
             OS_VERS="None"
             KSU_VERS="Unknown"
           else
-            # Extract models (2nd part), OS versions (3rd part), and KSU versions (6th part) from AK3_OP12_OOS15_android15-6.6_BakaSU_30700...zip
+            # Extract model, OS, and root version fields from the generated ZSU zip filenames
             MODELS=$(printf "%s\n" "${ZIPS[@]}" | awk -F'/' '{print $NF}' | awk -F'_' '{print $2}' | sort -u | paste -sd ", " -)
             OS_VERS=$(printf "%s\n" "${ZIPS[@]}" | awk -F'/' '{print $NF}' | awk -F'_' '{print $3}' | sort -u | paste -sd ", " -)
             KSU_VERS=$(printf "%s\n" "${ZIPS[@]}" | awk -F'/' '{print $NF}' | awk -F'_' '{print $6}' | sort -u | paste -sd ", " -)
           fi
           
-          echo "Found $ZIP_COUNT packages for models: $MODELS, KSU Ver: $KSU_VERS"
+          echo "Found $ZIP_COUNT packages for models: $MODELS, ZSU Ver: $KSU_VERS"
           
           # Use pure Bash multi-line string. True newlines are preserved!
           MSG_TEXT="🚀 <b>OnePlus Kernel Build Successful!</b>
