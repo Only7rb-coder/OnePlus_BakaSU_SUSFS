@@ -973,7 +973,7 @@ jobs:
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SUSFS_BASE_VERSION: ${{ needs.set-op-model.outputs.susfs_base_version }}
-      RELEASE_NAME: 'OnePlus Kernels With ${{ inputs.ksu_type }} & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }}'
+      RELEASE_NAME: 'OnePlus Kernels with ZSU (SUSFS disabled)'
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v6
@@ -1071,7 +1071,7 @@ jobs:
             <<< "${{ needs.set-op-model.outputs.active_gki_keys }}"
           
           cat << EOF > release_notes.md
-          # 🎯 OnePlus Kernels with $KSU_TYPE & SUSFS $SUSFS_BASE_VERSION
+          # 🎯 OnePlus Kernels with ZSU (SUSFS disabled)
           
           > **Build Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')  
           > **Build ID:** \`${{ github.run_id }}\`  
@@ -1197,11 +1197,18 @@ jobs:
           EOF
           fi
           
+          if [ "$ksu_type" = "ZSU" ]; then
+            echo "| **SUSFS** | Disabled (ZSU-compatible port not yet validated) |" >> release_notes.md
+          else
+            echo "| **SUSFS Version** | \`$SUSFS_BASE_VERSION\` |" >> release_notes.md
+          fi
           cat << EOF >> release_notes.md
-          | **SUSFS Version** | \`$SUSFS_BASE_VERSION\` |
           | **Optimization Level** | \`$OPTIMIZE_LEVEL\` |
           | **Clean Build** | $( [ "$CLEAN_BUILD" = "true" ] && echo "✅ Yes (no ccache)" || echo "❌ No (ccache enabled)" ) |
           | **Compiler** | Clang (version varies by device) |
+          EOF
+          if [ "$ksu_type" != "ZSU" ]; then
+            cat << EOF >> release_notes.md
           
           ### 📌 SUSFS Branch Mapping
           
@@ -1210,6 +1217,9 @@ jobs:
           $(for key in "${active_gki_keys[@]}"; do
             echo "| $key | \`${susfs_map[$key]:-unknown}\` |"
           done)
+          EOF
+          fi
+          cat << EOF >> release_notes.md
           
           ---
           
@@ -1226,9 +1236,15 @@ jobs:
           - **ZSU** - Only7rb-coder's ZSU manager and matching kernel-side root integration
           EOF
           fi
-          cat << EOF >> release_notes.md
-          - **SUSFS $SUSFS_BASE_VERSION** - Advanced hiding and security features (available on upstream variants; disabled for this ZSU-only port until ZSU-compatible SUSFS patches are validated)
+          if [ "$ksu_type" = "ZSU" ]; then
+            cat << EOF >> release_notes.md
+          - **SUSFS** - Not compiled into ZSU-only kernels; upstream SUSFS patches are incompatible with the ZSU hook lifecycle.
           EOF
+          else
+            cat << EOF >> release_notes.md
+          - **SUSFS $SUSFS_BASE_VERSION** - Advanced hiding and security features
+          EOF
+          fi
           
           if [ "${ksu_ver_global:-0}" -lt 12884 ]; then
             cat << EOF >> release_notes.md
@@ -1238,6 +1254,11 @@ jobs:
           cat << EOF >> release_notes.md
           ### 🛡️ Security & Privacy
           - **Baseband Guard (BBG)** - LSM-based baseband security
+          EOF
+          if [ "$ksu_type" = "ZSU" ]; then
+            echo "- **SUSFS hiding:** Not included in ZSU packages." >> release_notes.md
+          else
+            cat << EOF >> release_notes.md
           - **SUSFS Hide Features**:
             - ✅ SUS_PATH - Hide suspicious paths
             - ✅ SUS_MOUNT - Hide mount points (No Cli Support)
@@ -1247,6 +1268,9 @@ jobs:
             - ✅ OPEN_REDIRECT - File access redirection
             - ✅ SUS_MAP - Memory mapping protection
             - ✅ AVC_SPOOF - Spoof Procfs avc denial logs
+          EOF
+          fi
+          cat << EOF >> release_notes.md
           - **Ptrace Leak Fix** - For kernels < 5.16
           - **Unicode Fix** - Prevent path traversal and other detections using non-printable Unicode codepoints [Experimental]
           
@@ -1285,34 +1309,37 @@ jobs:
           fi
           cat << EOF >> release_notes.md
           ### Recomended Flasher
-          - **Kernel Flasher** (Required for flashing AnyKernel3 zips and backups and OTA)  
+          - **Kernel Flasher** (Required for flashing AnyKernel3 zips and backups and OTA)
             → [GitHub Release](https://github.com/fatalcoder524/KernelFlasher/releases)
-          
+
           ---
-          
+
+          ## ⚠️ Testing Status
+
+          All listed device/profile combinations compiled successfully in GitHub Actions. None has been verified by booting or flashing on physical hardware. Treat this as an initial test build; back up the original boot image and only use the ZIP that exactly matches your device and firmware.
+
           ## 📥 Installation Instructions
-          
+
           ### Prerequisites
           - Unlocked bootloader.
           - Backup your current boot image.
           - Install the matching ZSU manager APK for this ZSU kernel build.
-          
+
           ### Via Kernel Flasher
           1. Download the appropriate ZIP for your device.
           2. Flash the ZIP file using Kernel Flasher.
           3. Reboot system.
           4. Install Manager Application.
-          
+
           ---
-          
+
           ## 📜 Changelog
-          
+
           ### This Release
           - Locked the build workflow to ZSU only (no BakaSU or stock KernelSU build option).
           - ZSU builds intentionally disable SUSFS until a ZSU-compatible patch port is validated.
           - Added HMBIRD support for all SM8750/MT6991 devices.
           - Improved ccache build system.
-          - Enhanced SUSFS hiding capabilities.
           - Added IP_SET, IPv6 NAT and TTL support.
           - Added TMPFS_XATTR and TMPFS_POSIX_ACL support for Mountify.
           - Added Ptrace leak fix for kernels < 5.16.
@@ -1424,7 +1451,7 @@ jobs:
           ━━━━━━━━━━━━━━━━━━
           <b>🏷️ Release Tag:</b> <code>${{ env.NEW_TAG }}</code>
           <b>🔐 Root Solution:</b> ${{ inputs.ksu_type }} (v${KSU_VERS})
-          <b>🛡️ SUSFS Version:</b> ${{ env.SUSFS_BASE_VERSION }}
+          <b>🛡️ SUSFS:</b> Disabled for ZSU builds
           <b>⚙️ Optimization:</b> ${{ inputs.optimize_level }} | Clean: ${{ inputs.clean_build }}
           ━━━━━━━━━━━━━━━━━━
           <b>📦 Total Packages:</b> ${ZIP_COUNT} zips
