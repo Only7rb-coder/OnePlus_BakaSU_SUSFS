@@ -204,11 +204,22 @@ jobs:
           fi
           
           # Inject KSU type and hash into every device config
-          merged_matrix=$(jq \
-            --arg ksu_type "$ksu_type" \
-            --arg ksu_hash "$ksu_hash" \
-            '[.[] | . + {ksu_type: $ksu_type, ksu_hash: $ksu_hash}]' \
-            <<<"$filtered")
+          # The upstream SUSFS KernelSU patch rewrites KernelSU-Next's init
+          # lifecycle and removes hook declarations that ZSU requires. Until a
+          # ZSU-specific SUSFS port is validated, disable SUSFS for ZSU builds.
+          if [ "$ksu_type" = "ZSU" ]; then
+            merged_matrix=$(jq \
+              --arg ksu_type "$ksu_type" \
+              --arg ksu_hash "$ksu_hash" \
+              '[.[] | . + {ksu_type: $ksu_type, ksu_hash: $ksu_hash, susfs: false}]' \
+              <<<"$filtered")
+          else
+            merged_matrix=$(jq \
+              --arg ksu_type "$ksu_type" \
+              --arg ksu_hash "$ksu_hash" \
+              '[.[] | . + {ksu_type: $ksu_type, ksu_hash: $ksu_hash}]' \
+              <<<"$filtered")
+          fi
           final_count=$(echo "$merged_matrix" | jq 'length')
           
           echo "✅ Found $final_count device(s) to build"
@@ -1216,7 +1227,7 @@ jobs:
           EOF
           fi
           cat << EOF >> release_notes.md
-          - **SUSFS $SUSFS_BASE_VERSION** - Advanced hiding and security features
+          - **SUSFS $SUSFS_BASE_VERSION** - Advanced hiding and security features (available on upstream variants; disabled for this ZSU-only port until ZSU-compatible SUSFS patches are validated)
           EOF
           
           if [ "${ksu_ver_global:-0}" -lt 12884 ]; then
@@ -1298,7 +1309,7 @@ jobs:
           
           ### This Release
           - Locked the build workflow to ZSU only (no BakaSU or stock KernelSU build option).
-          - Updated SUSFS to $SUSFS_BASE_VERSION.
+          - ZSU builds intentionally disable SUSFS until a ZSU-compatible patch port is validated.
           - Added HMBIRD support for all SM8750/MT6991 devices.
           - Improved ccache build system.
           - Enhanced SUSFS hiding capabilities.

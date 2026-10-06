@@ -21,9 +21,9 @@ The upstream ZSU repository documents Android kernel integration separately; fea
 4. Install the matching ZSU manager from its official release page and verify that it recognizes the kernel after reboot.
 5. If the device fails to boot or ZSU does not recognize the kernel, restore the backed-up boot image; do not distribute the build as working.
 
-## Features retained from the upstream project
+## Features and current limitations
 
-SUSFS patches, optional Baseband Guard, BBR, TTL, IP_SET/IPv6 NAT, Unicode-related patches, LTO, build caching, device-specific tuning, and other capabilities remain subject to the selected kernel profile. Consult the release notes for the exact options compiled into each build.
+For ZSU builds, SUSFS is deliberately disabled. The reference SUSFS KernelSU patch rewrites the root driver initialization and removes hook declarations that this ZSU fork needs; applying it caused compile failures. A ZSU-specific SUSFS port has not yet been implemented or validated. Other device-profile features (such as optional Baseband Guard, BBR, TTL, IP_SET/IPv6 NAT, Unicode-related patches, LTO, build caching and device tuning) remain subject to the selected kernel profile. Each release must state its exact enabled features.
 
 ## Attribution
 
