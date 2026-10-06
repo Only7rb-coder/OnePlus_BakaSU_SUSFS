@@ -223,7 +223,7 @@ jobs:
           ksu_ref="${{ inputs.ksu_branch_or_hash }}"
           
           if [ "$ksu_type" == "BakaSU" ]; then
-            KSU_REPO_OWNER="BakaSU"
+            KSU_REPO_OWNER="Baka-SU"
             KSU_REPO_NAME="BakaSU"
           else
             KSU_REPO_OWNER="tiann"
