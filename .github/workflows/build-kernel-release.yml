@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: false
+      release_prerelease:
+        description: 'Publish the release as a prerelease (recommended until device boot testing is complete)'
+        required: true
+        type: boolean
+        default: true
       op_model:
         description: 'Select the OnePlus kernels to build'
         required: true
@@ -1372,8 +1377,13 @@ jobs:
 
       - name: 🚀 Create GitHub Release
         run: |
+          release_flags=()
+          if [ "${{ inputs.release_prerelease }}" = "true" ]; then
+            release_flags+=(--prerelease)
+          fi
           gh release create "${{ env.NEW_TAG }}" \
             --repo "${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}" \
+            "${release_flags[@]}" \
             --title "${{ env.RELEASE_NAME }}" \
             --notes-file release_notes.md
 
