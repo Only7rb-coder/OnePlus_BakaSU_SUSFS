@@ -1305,6 +1305,14 @@ runs:
             exit 1
           fi
         fi
+
+        case "$OP_BRANCH" in
+          wild/sm8850|wild/sm8845)
+            echo "Applying BBG efisp/abl conditional allowlist patch"
+            patch -p1 < "$KERNEL_PATCHES_FOLDER/common/bbg/0001-Enable-abl-and-efisp-flashing-for-efisp-exploit-devices.patch"
+            ;;
+        esac
+
         echo "✅ BBG LSM added"
         echo "::endgroup::"
 
@@ -2483,6 +2491,15 @@ runs:
         cd "$AK3_FOLDER"
         
         sed -i 's/do.check_boot_version=.*/do.check_boot_version=1/' anykernel.sh
+
+        if [ "$OP_BBG" = "true" ]; then
+          case "$OP_BRANCH" in
+            wild/sm8850|wild/sm8845)
+              echo "Adding BBG efisp/abl allowlist selection menu"
+              patch -p1 < "$GITHUB_ACTION_PATH/patches/enable-bbg-efisp-selection.patch"
+              ;;
+          esac
+        fi
         
         ZIP_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
         if [ "${{ env.OP_SUSFS }}" = true ]; then
