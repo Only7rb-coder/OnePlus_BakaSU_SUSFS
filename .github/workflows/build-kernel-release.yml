@@ -382,46 +382,58 @@ jobs:
             susfs_hashes["$key"]="$resolved"
             echo "  ✅ Resolved: $key → $resolved"
           done
-          
+
           # Write CSV list of active GKI versions
           active_gki_keys_csv=$(IFS=','; echo "${active_keys[*]:-}")
           echo "active_gki_keys=$active_gki_keys_csv" >> "$GITHUB_OUTPUT"
-          
+
           # Write hash to GITHUB_OUTPUT
           echo "susfs_hash_android12_5_10=${susfs_hashes[android12-5.10]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android13_5_15=${susfs_hashes[android13-5.15]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android14_6_1=${susfs_hashes[android14-6.1]:-unknown}"   >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}"   >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
-          
-          # SUSFS_VERSION — only when releasing
+
+          # The ZSU-only build disables SUSFS; continue its release numbering
+          # from the latest existing kernel release tag instead of parsing
+          # SUSFS headers that are not used by these builds.
           if [ "${{ inputs.make_release }}" = "true" ]; then
-            susfs_base_version="unknown"
-            for key in "${active_keys[@]}"; do
-              ver="${susfs_versions_per_key[$key]:-unknown}"
-              if [ "$ver" != "unknown" ]; then
-                susfs_base_version="$ver"
-                break
-              fi
-            done
-            
-            if [ "$susfs_base_version" = "unknown" ]; then
-              echo "::error::Could not extract SUSFS_VERSION from susfs.h for any active GKI key. Cannot proceed with release."
-              exit 1
-            fi
-            
-            # make_release=true: mismatch is a hard error — prevents wrong tag
-            for key in "${active_keys[@]}"; do
-              key_ver="${susfs_versions_per_key[$key]:-unknown}"
-              if [ "$key_ver" != "$susfs_base_version" ]; then
-                echo "::error::SUSFS version mismatch: '$key' has '$key_ver', expected '$susfs_base_version'. Align refs before releasing."
+            if [ "${{ inputs.ksu_type }}" = "ZSU" ]; then
+              latest_kernel_tag=$(gh api "repos/${GITHUB_REPOSITORY}/tags" \
+                --jq '[.[].name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+-r[0-9]+$"))] | first // empty')
+              if [ -z "$latest_kernel_tag" ]; then
+                echo "::error::Cannot find an existing vX.Y.Z-rN tag to continue the ZSU release series."
                 exit 1
               fi
-            done
-            
+              susfs_base_version="${latest_kernel_tag%-r*}"
+              echo "Using existing ZSU release series: $susfs_base_version (from $latest_kernel_tag)"
+            else
+              susfs_base_version="unknown"
+              for key in "${active_keys[@]}"; do
+                ver="${susfs_versions_per_key[$key]:-unknown}"
+                if [ "$ver" != "unknown" ]; then
+                  susfs_base_version="$ver"
+                  break
+                fi
+              done
+
+              if [ "$susfs_base_version" = "unknown" ]; then
+                echo "::error::Could not extract SUSFS_VERSION from susfs.h for any active GKI key. Cannot proceed with release."
+                exit 1
+              fi
+
+              # make_release=true: mismatch is a hard error — prevents wrong tag
+              for key in "${active_keys[@]}"; do
+                key_ver="${susfs_versions_per_key[$key]:-unknown}"
+                if [ "$key_ver" != "$susfs_base_version" ]; then
+                  echo "::error::SUSFS version mismatch: '$key' has '$key_ver', expected '$susfs_base_version'. Align refs before releasing."
+                  exit 1
+                fi
+              done
+            fi
             echo "susfs_base_version=$susfs_base_version" >> "$GITHUB_OUTPUT"
           fi
-          
+
           # Inject susfs_resolved_hash into each device in the matrix
           susfs_hashes_json=$(jq -n \
             --arg a12 "${susfs_hashes[android12-5.10]:-unknown}" \
