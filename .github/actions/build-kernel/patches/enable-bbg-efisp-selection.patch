@@ -1,21 +1,98 @@
-From e0169787aafa148a55e25bdd3aae004980084c00 Mon Sep 17 00:00:00 2001
-From: fatalcoder524 <11532648+fatalcoder524@users.noreply.github.com>
-Date: Tue, 7 Jul 2026 08:32:46 +0000
-Subject: [PATCH] Enable volume input to enable bbg efisp patch
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Fix BBG efisp menu input and 6.12 support
 
-Adapted for huangdihd/AnyKernel3.
+The menu patch called an undefined handle_input function, causing an infinite
+loop. Implement bounded event reading using the OS getevent binary as fallback,
+and default safely to No when input is unavailable. Recognize 6.12 kernels.
 
 ---
- anykernel.sh | 65 ++++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 65 insertions(+)
-
-diff --git a/anykernel.sh b/anykernel.sh
-index 6a97197..5360e0b 100755
 --- a/anykernel.sh
 +++ b/anykernel.sh
-@@ -42,6 +42,71 @@ $ksu_supported || abort "  -> Non-GKI device, abort."
- # boot install
- split_boot
+@@ -39,0 +40 @@
++    6.12*) ksu_supported=true ;;
+@@ -47,0 +49,146 @@
++
++# Android-bundled getevent is used because this AnyKernel tools bundle does
++# not ship a getevent binary. A missing reader must fail closed instead of
++# leaving the selection loop spinning forever.
++AK3_GETEVENT="$BIN/getevent"
++[ -x "$AK3_GETEVENT" ] || AK3_GETEVENT=/system/bin/getevent
++[ -x "$AK3_GETEVENT" ] || AK3_GETEVENT=$(command -v getevent 2>/dev/null)
++AK3_KEY_TIMEOUT=$(file_getprop anykernel.sh keycheck.timeout 2>/dev/null)
++case "$AK3_KEY_TIMEOUT" in
++  ''|*[!0-9]*) AK3_KEY_TIMEOUT=10 ;;
++esac
++[ "$AK3_KEY_TIMEOUT" -gt 0 ] || AK3_KEY_TIMEOUT=10
++
++ak3_get_uptime() {
++  read -r ak3_uptime _ < /proc/uptime
++  echo "${ak3_uptime%.*}"
++}
++
++ak3_find_volume_nodes() {
++  [ -x "$AK3_GETEVENT" ] || return 0
++  for ak3_dev in /dev/input/event*; do
++    [ -e "$ak3_dev" ] || continue
++    ak3_caps=$("$AK3_GETEVENT" -p "$ak3_dev" 2>/dev/null) || continue
++    echo "$ak3_caps" | grep -qE 'KEY_VOLUMEUP|KEY_VOLUMEDOWN|0072|0073' && echo "$ak3_dev"
++  done
++}
++AK3_VOLUME_DEVS=$(ak3_find_volume_nodes)
++
++handle_input() {
++  local ak3_result=TIMEOUT
++  local ak3_pids=""
++  local ak3_dev ak3_node ak3_start ak3_now ak3_elapsed ak3_hit ak3_click
++
++  rm -f /tmp/ak3_hit_*
++  if [ ! -x "$AK3_GETEVENT" ] || [ -z "$AK3_VOLUME_DEVS" ]; then
++    ui_print "Volume-key reader/device unavailable; defaulting to No."
++    echo "$ak3_result" > /tmp/ak3_key_result
++    return 0
++  fi
++
++  ui_print "Waiting for volume-key release (timeout: $AK3_KEY_TIMEOUT seconds)"
++  for ak3_dev in $AK3_VOLUME_DEVS; do
++    ak3_node=${ak3_dev##*event}
++    (
++      "$AK3_GETEVENT" "$ak3_dev" 2>/dev/null | while read -r ak3_type ak3_code ak3_value; do
++        if [ "$ak3_type" = "0001" ] && [ "$ak3_value" = "00000000" ]; then
++          case "$ak3_code" in
++            0073|73) echo up > "/tmp/ak3_hit_${ak3_node}"; break ;;
++            0072|72) echo down > "/tmp/ak3_hit_${ak3_node}"; break ;;
++          esac
++        fi
++      done
++    ) &
++    ak3_pids="$ak3_pids $!"
++  done
++
++  ak3_start=$(ak3_get_uptime)
++  while true; do
++    ak3_now=$(ak3_get_uptime)
++    ak3_elapsed=$((ak3_now - ak3_start))
++    for ak3_dev in $AK3_VOLUME_DEVS; do
++      ak3_node=${ak3_dev##*event}
++      ak3_hit="/tmp/ak3_hit_${ak3_node}"
++      if [ -f "$ak3_hit" ]; then
++        ak3_click=$(cat "$ak3_hit" 2>/dev/null)
++        case "$ak3_click" in
++          up) ak3_result=KEY_VOLUMEUP ;;
++          down) ak3_result=KEY_VOLUMEDOWN ;;
++        esac
++        break 2
++      fi
++    done
++    [ "$ak3_elapsed" -ge "$AK3_KEY_TIMEOUT" ] && break
++    sleep 0.05
++  done
++
++  echo "$ak3_result" > /tmp/ak3_key_result
++  for ak3_pid in $ak3_pids; do kill -9 "$ak3_pid" 2>/dev/null; done
++  killall -9 getevent 2>/dev/null
++  rm -f /tmp/ak3_hit_*
++  return 0
++}
 +
 +# Menu to conditionally patch BBG for abl/efisp whitelisting
 +##################################################
@@ -42,8 +119,8 @@ index 6a97197..5360e0b 100755
 +      KEY_RESULT=$(cat /tmp/ak3_key_result 2>/dev/null)
 +      case "$KEY_RESULT" in
 +      "KEY_VOLUMEUP")
-+		selected=$((selected % total + 1))
-+		;;
++        selected=$((selected % total + 1))
++        ;;
 +      "KEY_VOLUMEDOWN"|"TIMEOUT")
 +        ui_print "$SELECTED_STR $current"
 +        return $selected
@@ -54,7 +131,6 @@ index 6a97197..5360e0b 100755
 +}
 +
 +MENU_OPTIONS="Yes No"
-+
 +PATCH_CMDLINE=0
 +ui_print " "
 +ui_print "=========================================="
@@ -81,9 +157,6 @@ index 6a97197..5360e0b 100755
 +    patch_cmdline "oplusboot.secure_user_mode" ""
 +fi
 +##################################################
- if [ -f "split_img/ramdisk.cpio" ]; then
-     unpack_ramdisk
-     write_boot
- else
+
 -- 
 2.47.3
